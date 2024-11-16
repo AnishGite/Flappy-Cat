@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Flappy Cat</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #87CEEB;
+        }
+        canvas {
+            border: 2px solid #FF69B4;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="400" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game states
+        const GameState = {
+            INSTRUCTIONS: 'instructions',
+            PLAYING: 'playing',
+            GAMEOVER: 'gameover'
+        };
+
+        // Game variables
+        let gameState = GameState.INSTRUCTIONS;
+        let catX = 50;
+        let catY = canvas.height / 2;
+        let catVelocity = 0;
+        let horizontalVelocity = 0;
+        const gravity = 0.4;
+        const jumpForce = -6;
+        const moveSpeed = 5;
+        const pipeWidth = 80;
+        const pipeGap = 180;
+        const pipeSpacing = 350;
+        let score = 0;
+        
+        // Create cat face image
+        const catFace = new Image();
+        catFace.src = 'data:image/svg+xml,' + encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50">
+                <path d="M8 12 L18 25 L28 12 Z" fill="#FF69B4"/>
+                <path d="M42 12 L32 25 L22 12 Z" fill="#FF69B4"/>
+                <path d="M11 14 L18 24 L25 14 Z" fill="#FFB6C1"/>
+                <path d="M39 14 L32 24 L25 14 Z" fill="#FFB6C1"/>
+                <circle cx="25" cy="27" r="18" fill="#FF69B4"/>
+                <ellipse cx="18" cy="25" rx="3" ry="4" fill="white"/>
+                <ellipse cx="32" cy="25" rx="3" ry="4" fill="white"/>
+                <ellipse cx="18" cy="26" rx="1.5" ry="2" fill="black"/>
+                <ellipse cx="32" cy="26" rx="1.5" ry="2" fill="black"/>
+                <circle cx="15" cy="29" r="2" fill="#FFB6C1" opacity="0.6"/>
+                <circle cx="35" cy="29" r="2" fill="#FFB6C1" opacity="0.6"/>
+                <path d="M23 30 L27 30 L25 32 Z" fill="#FFB6C1"/>
+                <path d="M22 33 Q25 36 28 33" stroke="white" fill="none" stroke-width="1.5"/>
+                <line x1="8" y1="30" x2="18" y2="31" stroke="white" stroke-width="1"/>
+                <line x1="8" y1="33" x2="18" y2="33" stroke="white" stroke-width="1"/>
+                <line x1="8" y1="36" x2="18" y2="35" stroke="white" stroke-width="1"/>
+                <line x1="42" y1="30" x2="32" y2="31" stroke="white" stroke-width="1"/>
+                <line x1="42" y1="33" x2="32" y2="33" stroke="white" stroke-width="1"/>
+                <line x1="42" y1="36" x2="32" y2="35" stroke="white" stroke-width="1"/>
+            </svg>
+        `);
+
+        // Input handling
+        const keys = {
+            ArrowUp: false,
+            ArrowLeft: false,
+            ArrowRight: false
+        };
+
+        // Pipe array
+        let pipes = [{
+            x: canvas.width,
+            y: Math.random() * (canvas.height - pipeGap - 150) + 75
+        }];
+
+        function drawInstructions() {
+            // Background overlay
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Container dimensions and position
+            const containerWidth = 340;
+            const containerHeight = 480;
+            const containerX = (canvas.width - containerWidth) / 2;
+            const containerY = 60;
+
+            // Main container
+            ctx.fillStyle = 'white';
+            ctx.fillRect(containerX, containerY, containerWidth, containerHeight);
+            ctx.strokeStyle = '#FF69B4';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(containerX, containerY, containerWidth, containerHeight);
+
+            // Title
+            ctx.fillStyle = '#FF69B4';
+            ctx.font = 'bold 40px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Flappy Cat', canvas.width/2, containerY + 50);
+
+            // Cat icon
+            ctx.drawImage(catFace, canvas.width/2 - 25, containerY + 70, 50, 50);
+
+            // Instructions text
+            ctx.fillStyle = 'black';
+            ctx.font = '20px Arial';
+            ctx.textAlign = 'left';
+            
+            const instructions = [
+                '🎮 Controls:',
+                '',
+                '↑  Jump up',
+                '←  Move left',
+                '→  Move right',
+                '',
+                '📱 Mobile:',
+                'Tap screen to jump',
+                '',
+                '🎯 Goal:',
+                'Navigate through the wool',
+                '',
+            ];
+
+            let textY = containerY + 150;
+            instructions.forEach((line, index) => {
+                ctx.fillText(line, containerX + 20, textY + (index * 25));
+            });
+
+            // Start button
+            const buttonWidth = 200;
+            const buttonHeight = 50;
+            const buttonX = canvas.width/2 - buttonWidth/2;
+            const buttonY = containerY + containerHeight - buttonHeight - 20;
+
+            ctx.fillStyle = '#FF69B4';
+            ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 24px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Start Game!', canvas.width/2, buttonY + 33);
+        }
+
+        function drawWoolTexture(x, y, width, height, isTop) {
+            let gradient = ctx.createLinearGradient(x, isTop ? y + height : y, x + width, isTop ? y : y + height);
+            gradient.addColorStop(0, '#F5F5DC');
+            gradient.addColorStop(0.5, '#FFFFFF');
+            gradient.addColorStop(1, '#F5F5DC');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(x, y, width, height);
+
+            ctx.strokeStyle = '#E6E6DC';
+            ctx.lineWidth = 1;
+
+            for(let i = 0; i < height; i += 15) {
+                ctx.beginPath();
+                ctx.moveTo(x, y + i);
+                for(let j = 0; j <= width; j += 20) {
+                    ctx.quadraticCurveTo(x + j + 10, y + i + 7.5, x + j + 20, y + i);
+                }
+                ctx.stroke();
+            }
+
+            for(let i = 0; i < height; i += 30) {
+                for(let j = 0; j < width; j += 30) {
+                    ctx.beginPath();
+                    ctx.arc(x + j + 15, y + i + 15, 5, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        function drawPipe(x, y) {
+            drawWoolTexture(x, 0, pipeWidth, y, true);
+            drawWoolTexture(x, y + pipeGap, pipeWidth, canvas.height - (y + pipeGap), false);
+        }
+
+        function drawScore() {
+            ctx.fillStyle = 'black';
+            ctx.font = '24px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(`Score: ${score}`, 10, 30);
+        }
+
+        function drawGameOver() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'white';
+            ctx.font = '48px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Game Over!', canvas.width/2, canvas.height/2);
+            ctx.font = '24px Arial';
+            ctx.fillText(`Score: ${score}`, canvas.width/2, canvas.height/2 + 40);
+            ctx.fillText('Press Space to restart', canvas.width/2, canvas.height/2 + 80);
+        }
+
+        function resetGame() {
+            gameState = GameState.PLAYING;
+            catX = 50;
+            catY = canvas.height / 2;
+            catVelocity = 0;
+            horizontalVelocity = 0;
+            pipes = [{
+                x: canvas.width,
+                y: Math.random() * (canvas.height - pipeGap - 150) + 75
+            }];
+            score = 0;
+        }
+
+        function update() {
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (gameState === GameState.INSTRUCTIONS) {
+                drawInstructions();
+            } else if (gameState === GameState.PLAYING) {
+                if(keys.ArrowLeft) horizontalVelocity = -moveSpeed;
+                else if(keys.ArrowRight) horizontalVelocity = moveSpeed;
+                else horizontalVelocity = 0;
+
+                if(keys.ArrowUp) catVelocity = jumpForce;
+
+                catVelocity += gravity;
+                catY += catVelocity;
+                catX += horizontalVelocity;
+
+                catX = Math.max(25, Math.min(catX, canvas.width - 25));
+
+                if(catY < 0 || catY > canvas.height) {
+                    gameState = GameState.GAMEOVER;
+                }
+
+                for(let pipe of pipes) {
+                    pipe.x -= 2;
+
+                    if(pipe.x < catX + 20 && pipe.x + pipeWidth > catX - 20) {
+                        if(catY < pipe.y + 20 || catY > pipe.y + pipeGap - 20) {
+                            gameState = GameState.GAMEOVER;
+                        }
+                    }
+
+                    if(pipe.x + pipeWidth < catX - 20 && !pipe.scored) {
+                        score++;
+                        pipe.scored = true;
+                    }
+                }
+
+                pipes = pipes.filter(pipe => pipe.x > -pipeWidth);
+
+                if(pipes[pipes.length - 1].x < canvas.width - pipeSpacing) {
+                    pipes.push({
+                        x: canvas.width,
+                        y: Math.random() * (canvas.height - pipeGap - 150) + 75
+                    });
+                }
+
+                for(let pipe of pipes) {
+                    drawPipe(pipe.x, pipe.y);
+                }
+
+                ctx.drawImage(catFace, catX - 25, catY - 25, 50, 50);
+                drawScore();
+            } else if (gameState === GameState.GAMEOVER) {
+                drawGameOver();
+            }
+
+            requestAnimationFrame(update);
+        }
+
+        // Event listeners
+        document.addEventListener('keydown', (e) => {
+            if(e.key in keys) {
+                keys[e.key] = true;
+            }
+            if(gameState === GameState.GAMEOVER && e.code === 'Space') {
+                resetGame();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if(e.key in keys) {
+                keys[e.key] = false;
+            }
+        });
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            if (gameState === GameState.INSTRUCTIONS) {
+                const containerWidth = 340;
+                const containerHeight = 480;
+                const containerY = 60;
+                const buttonWidth = 200;
+                const buttonHeight = 50;
+                const buttonX = canvas.width/2 - buttonWidth/2;
+                const buttonY = containerY + containerHeight - buttonHeight - 20;
+
+                if (x >= buttonX && 
+                    x <= buttonX + buttonWidth && 
+                    y >= buttonY && 
+                    y <= buttonY + buttonHeight) {
+                    resetGame();
+                }
+            } else if (gameState === GameState.PLAYING) {
+                catVelocity = jumpForce;
+            }
+        });
+
+        // Start game
+        update();
+    </script>
+</body>
+</html>
